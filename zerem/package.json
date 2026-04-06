@@ -1,0 +1,31 @@
+{
+  "name": "zerem",
+  "private": true,
+  "type": "module",
+  "description": "Zerem MV3 extension — run `bun run build`, then load the `dist/` folder in chrome://extensions.",
+  "scripts": {
+    "dev": "vite build --watch",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/chrome": "^0.1.39",
+    "@types/react": "18",
+    "@types/react-dom": "18",
+    "@vitejs/plugin-react": "4.3.4",
+    "typescript": "^5.6.3",
+    "vite": "5"
+  },
+  "overrides": {
+    "@noble/hashes": "1.8.0"
+  },
+  "dependencies": {
+    "@dynamic-labs/sdk-react-core": "^4.75.0",
+    "@dynamic-labs/solana": "^4.75.0",
+    "@noble/hashes": "1.8.0",
+    "@solana/web3.js": "^1.98.4",
+    "react": "18",
+    "react-dom": "18"
+  }
+}
