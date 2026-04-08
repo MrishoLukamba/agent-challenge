@@ -197,6 +197,72 @@ function NavIconDoc() {
   );
 }
 
+function oauthAvatarUrl(
+  user:
+    | {
+        verifiedCredentials?: Array<{
+          oauthAccountPhotos?: string[] | null | undefined;
+        } | null | undefined>;
+      }
+    | undefined
+): string | null {
+  if (!user?.verifiedCredentials?.length) return null;
+  for (const c of user.verifiedCredentials) {
+    const photos = c?.oauthAccountPhotos;
+    if (Array.isArray(photos) && photos[0]) return photos[0];
+  }
+  return null;
+}
+
+function walletAccountTitle(
+  user: { username?: string | null; alias?: string; email?: string } | undefined,
+  address: string
+) {
+  if (user?.username) return String(user.username);
+  if (user?.alias) return user.alias;
+  if (user?.email) return user.email;
+  if (address.length <= 12) return address;
+  return `${address.slice(0, 4)}…${address.slice(-4)}`;
+}
+
+/** Sidebar account avatar — only when wallet connected; opens Dynamic profile */
+function NavAccountAvatar() {
+  const { primaryWallet, user, setShowDynamicUserProfile } = useDynamicContext();
+  if (!primaryWallet?.address) return null;
+  const avatarUrl = oauthAvatarUrl(user);
+  const title = walletAccountTitle(user, primaryWallet.address);
+  return (
+    <button
+      type="button"
+      className="nav-account-btn"
+      aria-label={`Account · ${title}`}
+      onClick={() => setShowDynamicUserProfile(true)}
+    >
+      {avatarUrl ? (
+        <img
+          src={avatarUrl}
+          alt=""
+          className="nav-account-img"
+          referrerPolicy="no-referrer"
+        />
+      ) : (
+        <span className="nav-account-fallback" aria-hidden>
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
+            <circle cx="8" cy="5" r="2.75" stroke="currentColor" strokeWidth="1.35" />
+            <path
+              d="M2.75 13.25c0-2.9 2.35-5.25 5.25-5.25s5.25 2.35 5.25 5.25"
+              stroke="currentColor"
+              strokeWidth="1.35"
+              strokeLinecap="round"
+            />
+          </svg>
+        </span>
+      )}
+      <span className="nav-tooltip">Account</span>
+    </button>
+  );
+}
+
 type TimerIntervalSaveProps = {
   intervalHoursInput: string;
   setIntervalHoursInput: Dispatch<SetStateAction<string>>;
@@ -327,6 +393,8 @@ export default function App() {
   const [sidebarNav, setSidebarNav] = useState<'home' | 'domains' | 'review' | 'market'>('home');
   const [marketMenuOpen, setMarketMenuOpen] = useState(false);
   const marketNavRef = useRef<HTMLDivElement>(null);
+  const [socialMenuOpen, setSocialMenuOpen] = useState(false);
+  const socialAnchorRef = useRef<HTMLDivElement>(null);
   const [blockedOpen, setBlockedOpen] = useState(false);
   const [blockedHeaderLabel, setBlockedHeaderLabel] = useState('Blocked (0) ▸');
   const [selectedTweet, setSelectedTweet] = useState<SelectedTweet | null>(null);
@@ -349,18 +417,26 @@ export default function App() {
 
   useEffect(() => {
     const onDocDown = (e: MouseEvent) => {
-      if (!marketMenuOpen) return;
-      const el = marketNavRef.current;
-      if (el && !el.contains(e.target as Node)) setMarketMenuOpen(false);
+      const t = e.target as Node;
+      if (marketMenuOpen) {
+        const el = marketNavRef.current;
+        if (el && !el.contains(t)) setMarketMenuOpen(false);
+      }
+      if (socialMenuOpen) {
+        const el = socialAnchorRef.current;
+        if (el && !el.contains(t)) setSocialMenuOpen(false);
+      }
     };
+    if (!marketMenuOpen && !socialMenuOpen) return;
     document.addEventListener('mousedown', onDocDown);
     return () => document.removeEventListener('mousedown', onDocDown);
-  }, [marketMenuOpen]);
+  }, [marketMenuOpen, socialMenuOpen]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setMarketMenuOpen(false);
+        setSocialMenuOpen(false);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -371,6 +447,7 @@ export default function App() {
     setSidebarNav('market');
     setPanel(sub);
     setMarketMenuOpen(false);
+    setSocialMenuOpen(false);
   }, []);
 
   const intervalHours = status
@@ -392,6 +469,7 @@ export default function App() {
 
   const nav = (view: typeof sidebarNav) => {
     setMarketMenuOpen(false);
+    setSocialMenuOpen(false);
     setSidebarNav(view);
     if (view === 'home') setPanel('home');
     else if (view === 'domains') setPanel('domains');
@@ -501,6 +579,7 @@ export default function App() {
         </div>
         <div className="nav-spacer" />
         <div className="nav-bottom">
+          {import.meta.env.VITE_DYNAMIC_ENVIRONMENT_ID ? <NavAccountAvatar /> : null}
           <button
             type="button"
             className="nav-btn"
@@ -647,16 +726,34 @@ export default function App() {
                 </div>
               </div>
             </div>
-            <div className="home-social-row">
+            <div className="home-social-anchor" ref={socialAnchorRef}>
               <button
                 type="button"
-                className="home-social-x-btn"
-                title="Link X account"
-                aria-label="Link X account"
-                onClick={() => chrome.tabs.create({ url: 'https://x.com/' })}
+                className="btn small home-social-trigger"
+                aria-expanded={socialMenuOpen}
+                aria-haspopup="menu"
+                aria-label="Add social account"
+                onClick={() => setSocialMenuOpen((o) => !o)}
               >
-                <span aria-hidden>𝕏</span>
+                Add social
               </button>
+              {socialMenuOpen ? (
+                <div className="home-social-popover" role="menu" aria-label="Social platforms">
+                  <button
+                    type="button"
+                    className="home-social-x-icon-only"
+                    role="menuitem"
+                    title="Open X"
+                    aria-label="Open X"
+                    onClick={() => {
+                      setSocialMenuOpen(false);
+                      chrome.tabs.create({ url: 'https://x.com/' });
+                    }}
+                  >
+                    <span aria-hidden>𝕏</span>
+                  </button>
+                </div>
+              ) : null}
             </div>
             <div
               className="empty-state home-empty-state"
