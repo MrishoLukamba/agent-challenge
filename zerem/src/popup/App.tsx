@@ -121,9 +121,7 @@ type PendingPayload = {
 
 type SelectedTweet = {
   text: string;
-  nftEligible: boolean;
-  reason: string;
-  index: number;
+  listToMarket: boolean;
 };
 
 function formatDuration(ms: number) {
@@ -499,7 +497,7 @@ export default function App() {
     setSidebarNav('review');
     setPanel('editor');
     setPublishLabel(
-      tweet.nftEligible
+      tweet.listToMarket
         ? 'Posting tweet, minting NFT, creating market...'
         : 'Posting tweet to X...'
     );
@@ -871,25 +869,38 @@ export default function App() {
                 <div>
                   {pending.tweets.map((t, index) => {
                     const text = typeof t === 'string' ? t : (t as { text?: string }).text || '';
-                    const nftEligible =
-                      typeof t === 'object' && !!(t as { nftEligible?: boolean }).nftEligible;
-                    const reason =
-                      typeof t === 'object' ? (t as { reason?: string }).reason || '' : '';
+                    const listToMarket =
+                      typeof t === 'object' && !!(t as { listToMarket?: boolean }).listToMarket;
                     return (
                       <div
                         key={index}
-                        className={`tweet-card${nftEligible ? ' nft-eligible' : ''}`}
+                        className="tweet-card"
                         role="button"
                         tabIndex={0}
-                        onClick={() => openEditor({ text, nftEligible, reason, index })}
+                        onClick={() => openEditor({ text, listToMarket })}
                         onKeyDown={() => {}}
                       >
                         <p className="tweet-text">{text}</p>
                         <div className="tweet-meta">
-                          <span className={`badge${nftEligible ? ' nft' : ''}`}>
-                            {nftEligible ? 'NFT Eligible' : 'Tweet Only'}
+                          <span className="badge">Tweet</span>
+                          <span className="tweet-toggle">
+                            <span className="tweet-toggle-label">List to markets</span>
+                            <span
+                              className={`toggle-switch${listToMarket ? ' on' : ''}`}
+                              role="button"
+                              tabIndex={0}
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                await chrome.runtime.sendMessage({
+                                  type: 'UPDATE_PENDING_TWEET',
+                                  index,
+                                  patch: { listToMarket: !listToMarket },
+                                });
+                                await refresh();
+                              }}
+                              onKeyDown={() => {}}
+                            />
                           </span>
-                          <span className="reason">{reason}</span>
                         </div>
                       </div>
                     );
@@ -945,7 +956,7 @@ export default function App() {
                 <div className="action-icon post">𝕏</div>
                 <span>Post this tweet to your X account</span>
               </div>
-              {selectedTweet?.nftEligible ? (
+              {selectedTweet?.listToMarket ? (
                 <>
                   <div className="action-item">
                     <div className="action-icon mint">◆</div>
@@ -958,13 +969,6 @@ export default function App() {
                 </>
               ) : null}
             </div>
-            <p className="nft-reason">
-              {selectedTweet
-                ? selectedTweet.nftEligible
-                  ? `Why eligible: ${selectedTweet.reason}`
-                  : `Not NFT eligible: ${selectedTweet.reason}`
-                : ''}
-            </p>
             <button
               type="button"
               className="btn primary full-width"
@@ -975,7 +979,10 @@ export default function App() {
                 setPanel('publishing');
                 const res = await chrome.runtime.sendMessage({
                   type: 'PUBLISH_TWEET',
-                  payload: { text, index: selectedTweet.index },
+                  payload: {
+                    text,
+                    listToMarket: selectedTweet.listToMarket,
+                  },
                 });
                 setSelectedTweet(null);
                 if (res && typeof res === 'object' && 'error' in res) {
@@ -988,7 +995,7 @@ export default function App() {
                 await refresh();
               }}
             >
-              {selectedTweet?.nftEligible
+              {selectedTweet?.listToMarket
                 ? 'Confirm — Post, Mint & Create Market'
                 : 'Confirm — Post Tweet'}
             </button>

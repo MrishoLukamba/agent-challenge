@@ -708,6 +708,20 @@ body {
   gap: 8px;
   flex-wrap: wrap;
 }
+.tweet-meta .meta-spacer {
+  margin-left: auto;
+}
+.tweet-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.tweet-toggle-label {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  user-select: none;
+}
 .badge {
   font-size: 10px;
   font-weight: 600;

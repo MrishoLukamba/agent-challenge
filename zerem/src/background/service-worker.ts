@@ -192,7 +192,10 @@ async function sendToAgent() {
   }
 }
 
-async function publishTweet(payload: { text: string; index?: number }) {
+async function publishTweet(payload: {
+  text: string;
+  listToMarket?: boolean;
+}) {
   const config = await chrome.storage.sync.get('agentUrl');
   const agentUrl = ((config.agentUrl as string) || DEFAULT_AGENT_URL).replace(/\/$/, '');
 
@@ -238,6 +241,30 @@ chrome.runtime.onMessage.addListener(
     }
 
     switch (msg.type) {
+      case 'UPDATE_PENDING_TWEET': {
+        if (!pendingResults?.tweets?.length) {
+          respond({ ok: false });
+          break;
+        }
+        const index = typeof msg.index === 'number' ? msg.index : -1;
+        if (index < 0 || index >= pendingResults.tweets.length) {
+          respond({ ok: false });
+          break;
+        }
+        const patch = (msg.patch ?? {}) as Record<string, unknown>;
+        const current = pendingResults.tweets[index];
+        if (typeof current === 'string') {
+          pendingResults.tweets[index] = { text: current, ...patch };
+        } else if (current && typeof current === 'object') {
+          pendingResults.tweets[index] = { ...(current as object), ...patch };
+        } else {
+          pendingResults.tweets[index] = patch;
+        }
+        persist();
+        respond({ ok: true });
+        break;
+      }
+
       case 'SIGNAL':
         if (!isTracking) break;
         if (isDomainBlocked(msg.domain as string)) break;
@@ -299,7 +326,7 @@ chrome.runtime.onMessage.addListener(
         break;
 
       case 'PUBLISH_TWEET':
-        publishTweet(msg.payload as { text: string; index?: number }).then(respond);
+        publishTweet(msg.payload as { text: string; listToMarket?: boolean }).then(respond);
         return true;
 
       case 'FORCE_SEND':
