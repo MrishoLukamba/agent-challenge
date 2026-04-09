@@ -214,27 +214,28 @@ function oauthAvatarUrl(
 
 function walletAccountTitle(
   user: { username?: string | null; alias?: string; email?: string } | undefined,
-  address: string
+  address?: string
 ) {
   if (user?.username) return String(user.username);
   if (user?.alias) return user.alias;
   if (user?.email) return user.email;
+  if (!address) return 'Account';
   if (address.length <= 12) return address;
   return `${address.slice(0, 4)}…${address.slice(-4)}`;
 }
 
-/** Sidebar account avatar — only when wallet connected; opens Dynamic profile */
-function NavAccountAvatar() {
-  const { primaryWallet, user, setShowDynamicUserProfile } = useDynamicContext();
-  if (!primaryWallet?.address) return null;
+/** Sidebar account avatar — visible when user is authenticated */
+function NavAccountAvatar({ onManageAccount }: { onManageAccount: () => void }) {
+  const { primaryWallet, user } = useDynamicContext();
+  if (!user && !primaryWallet?.address) return null;
   const avatarUrl = oauthAvatarUrl(user);
-  const title = walletAccountTitle(user, primaryWallet.address);
+  const title = walletAccountTitle(user, primaryWallet?.address);
   return (
     <button
       type="button"
       className="nav-account-btn"
       aria-label={`Account · ${title}`}
-      onClick={() => setShowDynamicUserProfile(true)}
+      onClick={onManageAccount}
     >
       {avatarUrl ? (
         <img
@@ -336,20 +337,20 @@ function TimerIntervalSaveWithWallet({
 }
 
 /** Home empty state — must render only inside DynamicContextProvider when env is set */
-function HomeConnectWalletButton() {
-  const { primaryWallet, setShowAuthFlow, setShowDynamicUserProfile } = useDynamicContext();
-  const connected = Boolean(primaryWallet);
+function HomeConnectWalletButton({ onManageAccount }: { onManageAccount: () => void }) {
+  const { primaryWallet, user, setShowAuthFlow } = useDynamicContext();
+  const connected = Boolean(user || primaryWallet);
   return (
     <div className="home-connect-wrap">
       <button
         type="button"
         className="btn primary home-connect-btn"
         onClick={() => {
-          if (connected) setShowDynamicUserProfile(true);
+          if (connected) onManageAccount();
           else setShowAuthFlow(true);
         }}
       >
-        {connected ? 'Manage wallet' : 'Connect wallet'}
+        {connected ? 'Manage account' : 'Connect'}
       </button>
     </div>
   );
@@ -376,6 +377,7 @@ function NavIconMarket() {
 }
 
 export default function App() {
+  const { handleLogOut, primaryWallet, user, setShowAuthFlow } = useDynamicContext();
   const [status, setStatus] = useState<StatusState | null>(null);
   const [pending, setPending] = useState<PendingPayload>(null);
   const [panel, setPanel] = useState<
@@ -399,6 +401,8 @@ export default function App() {
   const [editorText, setEditorText] = useState('');
   const [publishLabel, setPublishLabel] = useState('Posting...');
   const [intervalHoursInput, setIntervalHoursInput] = useState('2');
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
+  const [isForceSending, setIsForceSending] = useState(false);
 
   const refresh = useCallback(async () => {
     const state = (await chrome.runtime.sendMessage({ type: 'GET_STATUS' })) as StatusState;
@@ -505,6 +509,20 @@ export default function App() {
 
   const charCountClass =
     editorText.length > 280 ? 'over' : editorText.length > 250 ? 'warning' : '';
+  const walletAddress = primaryWallet?.address ?? null;
+  const accountTitle = walletAccountTitle(user, walletAddress ?? undefined);
+
+  const openManageAccount = useCallback(() => {
+    setLogoutConfirmOpen(true);
+  }, []);
+
+  const logout = useCallback(async () => {
+    try {
+      await handleLogOut();
+    } finally {
+      setLogoutConfirmOpen(false);
+    }
+  }, [handleLogOut]);
 
   return (
     <>
@@ -577,7 +595,9 @@ export default function App() {
         </div>
         <div className="nav-spacer" />
         <div className="nav-bottom">
-          {import.meta.env.VITE_DYNAMIC_ENVIRONMENT_ID ? <NavAccountAvatar /> : null}
+          {import.meta.env.VITE_DYNAMIC_ENVIRONMENT_ID ? (
+            <NavAccountAvatar onManageAccount={openManageAccount} />
+          ) : null}
           <button
             type="button"
             className="nav-btn"
@@ -629,6 +649,91 @@ export default function App() {
             </span>
           </div>
           <div style={{ padding: '0 20px 20px' }}>
+            {dynamicEnv ? (
+              <div
+                style={{
+                  background: 'var(--bg-surface)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 10,
+                  padding: 10,
+                  marginBottom: 10,
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginBottom: 8,
+                  }}
+                >
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', letterSpacing: 0.25 }}>
+                    Account
+                  </div>
+                  {user || walletAddress ? (
+                    <button
+                      type="button"
+                      className="btn small"
+                      style={{ padding: '4px 8px' }}
+                      onClick={openManageAccount}
+                    >
+                      Manage
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn small"
+                      style={{ padding: '4px 8px' }}
+                      onClick={() => setShowAuthFlow(true)}
+                    >
+                      Connect
+                    </button>
+                  )}
+                </div>
+
+                <div style={{ fontSize: 12, marginBottom: 6 }}>
+                  {user || walletAddress ? (
+                    <span style={{ color: 'var(--text-secondary)' }}>{accountTitle}</span>
+                  ) : (
+                    <span style={{ color: 'var(--text-muted)' }}>Not connected</span>
+                  )}
+                </div>
+
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    justifyContent: 'space-between',
+                  }}
+                >
+                  <div
+                    style={{
+                      fontFamily: 'var(--mono)',
+                      fontSize: 11,
+                      color: walletAddress ? 'var(--text-primary)' : 'var(--text-muted)',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      maxWidth: 250,
+                    }}
+                    title={walletAddress ?? 'No wallet address yet'}
+                  >
+                    {walletAddress ?? 'No wallet address yet'}
+                  </div>
+                  {walletAddress ? (
+                    <button
+                      type="button"
+                      className="btn small"
+                      style={{ padding: '4px 8px' }}
+                      onClick={() => void navigator.clipboard.writeText(walletAddress)}
+                    >
+                      Copy
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
             <div
               className={`pending-banner${status?.hasPending && (status.pendingCount ?? 0) > 0 ? ' visible' : ''}`}
             >
@@ -721,6 +826,27 @@ export default function App() {
                       Save
                     </button>
                   )}
+                  <button
+                    type="button"
+                    className="btn small"
+                    disabled={isForceSending || !status?.isTracking}
+                    title={
+                      status?.isTracking
+                        ? 'Send current session to agent now'
+                        : 'Resume tracking to send session'
+                    }
+                    onClick={async () => {
+                      setIsForceSending(true);
+                      try {
+                        await chrome.runtime.sendMessage({ type: 'FORCE_SEND' });
+                        await refresh();
+                      } finally {
+                        setIsForceSending(false);
+                      }
+                    }}
+                  >
+                    {isForceSending ? 'Sending...' : 'Send now'}
+                  </button>
                 </div>
               </div>
             </div>
@@ -763,11 +889,11 @@ export default function App() {
                 Your digital life is interesting—let&apos;s make it auctionable.
               </p>
               {import.meta.env.VITE_DYNAMIC_ENVIRONMENT_ID ? (
-                <HomeConnectWalletButton />
+                <HomeConnectWalletButton onManageAccount={openManageAccount} />
               ) : (
                 <div className="home-connect-wrap">
                   <button type="button" className="btn primary home-connect-btn" disabled>
-                    Connect wallet
+                    Connect
                   </button>
                 </div>
               )}
@@ -789,7 +915,7 @@ export default function App() {
               </p>
             </div>
             <div id="domainList" style={{ display: hasDomainData ? 'block' : 'none' }}>
-              <div className="section-title">Tracking ({activeDomains.length})</div>
+              <div className="section-title">Visited ({activeDomains.length})</div>
               <div>
                 {activeDomains.map((stat) => (
                   <div key={stat.domain} className="domain-row">
@@ -1158,6 +1284,50 @@ export default function App() {
           </div>
         </div>
       </div>
+
+      {logoutConfirmOpen ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Log out"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.72)',
+            display: 'grid',
+            placeItems: 'center',
+            zIndex: 1000,
+          }}
+        >
+          <div
+            style={{
+              width: 'min(320px, calc(100vw - 24px))',
+              background: '#12161f',
+              border: '1px solid rgba(255,255,255,0.22)',
+              borderRadius: 12,
+              boxShadow: '0 18px 44px rgba(0,0,0,0.55)',
+              padding: 16,
+            }}
+          >
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>Log out?</div>
+            <div style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 14 }}>
+              You are logging out of your Zerem session.
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button
+                type="button"
+                className="btn small"
+                onClick={() => setLogoutConfirmOpen(false)}
+              >
+                Cancel
+              </button>
+              <button type="button" className="btn primary small" onClick={() => void logout()}>
+                Log out
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
     </>
   );
