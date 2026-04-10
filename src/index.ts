@@ -1,10 +1,15 @@
 import {
   ModelType,
+  type Character,
   type IAgentRuntime,
   type Memory,
   type Plugin,
+  type Project,
   type Route,
 } from "@elizaos/core";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 type ZeremActivityPayload = {
   collectedAt: string;
@@ -27,6 +32,47 @@ type ZeremPublishRequest = {
   text: string;
   listToMarket?: boolean;
 };
+
+const LOG_PREFIX = "[ZEREM:PLUGIN]";
+
+function logInfo(event: string, meta?: Record<string, unknown>) {
+  if (meta) {
+    console.log(`${LOG_PREFIX} ${event}`, meta);
+    return;
+  }
+  console.log(`${LOG_PREFIX} ${event}`);
+}
+
+function logError(event: string, error: unknown, meta?: Record<string, unknown>) {
+  const message =
+    error instanceof Error
+      ? { name: error.name, message: error.message, stack: error.stack }
+      : { error };
+  console.error(`${LOG_PREFIX} ${event}`, {
+    ...(meta ?? {}),
+    ...message,
+  });
+}
+
+function summarizeGeneratePayload(payload: ZeremActivityPayload) {
+  return {
+    collectedAt: payload?.collectedAt ?? null,
+    totalEntries: payload?.totalEntries ?? 0,
+    domainsCount: Array.isArray(payload?.domains) ? payload.domains.length : 0,
+    domainsSample: Array.isArray(payload?.domains)
+      ? payload.domains.slice(0, 5)
+      : [],
+    dataKeysCount:
+      payload?.data && typeof payload.data === "object"
+        ? Object.keys(payload.data).length
+        : 0,
+  };
+}
+
+function previewText(text: string, max = 120) {
+  const clean = text.replace(/\s+/g, " ").trim();
+  return clean.length <= max ? clean : `${clean.slice(0, max)}...`;
+}
 
 function buildGeneratePrompt(payload: ZeremActivityPayload): string {
   return [
@@ -139,8 +185,10 @@ async function runAction(
   memory: Memory,
   opts?: { optional?: boolean }
 ) {
+  logInfo("run_action.start", { names, optional: Boolean(opts?.optional) });
   const action = getAction(runtime, names);
   if (!action) {
+    logInfo("run_action.missing", { names, optional: Boolean(opts?.optional) });
     if (opts?.optional) return;
     throw new Error(`Missing action: ${names.join(", ")}`);
   }
@@ -153,6 +201,10 @@ async function runAction(
 
   const isValid = await validate(runtime, memory, undefined);
   if (!isValid) {
+    logInfo("run_action.validate_failed", {
+      action: String(action.name),
+      optional: Boolean(opts?.optional),
+    });
     if (opts?.optional) return;
     throw new Error(`Action validate() failed: ${String(action.name)}`);
   }
@@ -162,7 +214,9 @@ async function runAction(
     msg: Memory,
     state?: unknown
   ) => Promise<unknown>);
-  return handler(runtime, memory, undefined);
+  const output = await handler(runtime, memory, undefined);
+  logInfo("run_action.success", { action: String(action.name) });
+  return output;
 }
 
 const zeremRoutes: Route[] = [
@@ -171,9 +225,23 @@ const zeremRoutes: Route[] = [
     path: "/api/zerem/generate",
     public: true,
     handler: async (req, res, runtime) => {
+      const startedAt = Date.now();
       const payload = req.body as ZeremActivityPayload;
-      const result = await generateTweets(runtime, payload);
-      res.status(200).json(result);
+      logInfo("generate.request_received", summarizeGeneratePayload(payload));
+      try {
+        const result = await generateTweets(runtime, payload);
+        logInfo("generate.success", {
+          elapsedMs: Date.now() - startedAt,
+          summaryLength: result.summary.length,
+          tweetsCount: result.tweets.length,
+        });
+        res.status(200).json(result);
+      } catch (error) {
+        logError("generate.failed", error, {
+          elapsedMs: Date.now() - startedAt,
+        });
+        res.status(500).json({ error: "Failed to generate tweets" });
+      }
     },
   },
   {
@@ -181,31 +249,64 @@ const zeremRoutes: Route[] = [
     path: "/api/zerem/publish",
     public: true,
     handler: async (req, res, runtime) => {
+      const startedAt = Date.now();
       const body = (req.body ?? {}) as Partial<ZeremPublishRequest>;
       const text = body.text?.trim();
+      const listToMarket =
+        typeof body.listToMarket === "boolean" ? body.listToMarket : false;
+      logInfo("publish.request_received", {
+        hasText: Boolean(text),
+        textPreview: text ? previewText(text) : "",
+        textLength: text?.length ?? 0,
+        listToMarket,
+      });
       if (!text) {
+        logInfo("publish.bad_request_missing_text");
         res.status(400).json({ error: "Missing text" });
         return;
       }
 
-      const listToMarket = typeof body.listToMarket === "boolean" ? body.listToMarket : false;
       const memory = createPublishMemory(runtime, text);
-
-      await runAction(runtime, ["POST_TWEET", "TWITTER_POST_TWEET"], memory);
-      if (listToMarket) {
-        await runAction(runtime, ["MINT_TWEET_NFT"], memory, { optional: true });
-        await runAction(runtime, ["CREATE_FRACTIONAL_MARKET"], memory, { optional: true });
+      try {
+        await runAction(runtime, ["POST_TWEET", "TWITTER_POST_TWEET"], memory);
+        if (listToMarket) {
+          await runAction(runtime, ["MINT_TWEET_NFT"], memory, {
+            optional: true,
+          });
+          await runAction(runtime, ["CREATE_FRACTIONAL_MARKET"], memory, {
+            optional: true,
+          });
+        }
+        logInfo("publish.success", { elapsedMs: Date.now() - startedAt });
+        res.status(200).json({ ok: true });
+      } catch (error) {
+        logError("publish.failed", error, { elapsedMs: Date.now() - startedAt });
+        res.status(500).json({ error: "Failed to publish tweet" });
       }
-
-      res.status(200).json({ ok: true });
     },
   },
 ];
 
-export const zeremPlugin: Plugin = {
+const zeremPlugin: Plugin = {
   name: "zerem-plugin",
   description: "Bridge between Zerem extension and agent actions.",
-  routes: zeremRoutes,
+  routes: zeremRoutes
 };
 
-export default zeremPlugin;
+const currentFile = fileURLToPath(import.meta.url);
+const currentDir = dirname(currentFile);
+const characterPath = resolve(currentDir, "../characters/agent.character.json");
+const zeremCharacter = JSON.parse(
+  readFileSync(characterPath, "utf-8")
+) as Character;
+
+const zeremProject: Project = {
+  agents: [
+    {
+      character: zeremCharacter,
+      plugins: [zeremPlugin],
+    },
+  ],
+};
+
+export default zeremProject;

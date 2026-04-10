@@ -41,6 +41,7 @@ const DEFAULT_BLOCKED = [
 
 const WINDOW_MS = 6 * 60 * 60 * 1000;
 const DEFAULT_AGENT_URL = 'http://localhost:3000';
+const DEFAULT_AGENT_ID = '4c449b19-da51-0284-ab41-bc4b6b1b471b';
 
 async function restore() {
   const session = await chrome.storage.session.get('zerem');
@@ -144,6 +145,7 @@ function scheduleNextAlarm() {
 }
 
 async function sendToAgent() {
+  console.log('sendToAgent');
   if (!isTracking) return;
   finalizeCurrentTab(Date.now());
   prune(store, WINDOW_MS);
@@ -151,11 +153,13 @@ async function sendToAgent() {
   const payload = getPayload(store);
   if (payload.totalEntries === 0) return;
 
-  const config = await chrome.storage.sync.get('agentUrl');
+  const config = await chrome.storage.sync.get(['agentUrl', 'agentId']);
   const agentUrl = ((config.agentUrl as string) || DEFAULT_AGENT_URL).replace(/\/$/, '');
+  const agentId = (config.agentId as string) || DEFAULT_AGENT_ID;
+  const generateUrl = `${agentUrl}/zerem-plugin/zerem/generate?${new URLSearchParams({ agentId })}`;
 
   try {
-    const res = await fetch(`${agentUrl}/api/zerem/generate`, {
+    const res = await fetch(generateUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -196,11 +200,13 @@ async function publishTweet(payload: {
   text: string;
   listToMarket?: boolean;
 }) {
-  const config = await chrome.storage.sync.get('agentUrl');
+  const config = await chrome.storage.sync.get(['agentUrl', 'agentId']);
   const agentUrl = ((config.agentUrl as string) || DEFAULT_AGENT_URL).replace(/\/$/, '');
+  const agentId = (config.agentId as string) || DEFAULT_AGENT_ID;
+  const publishUrl = `${agentUrl}/zerem-plugin/zerem/publish?${new URLSearchParams({ agentId })}`;
 
   try {
-    const res = await fetch(`${agentUrl}/api/zerem/publish`, {
+    const res = await fetch(publishUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -330,6 +336,7 @@ chrome.runtime.onMessage.addListener(
         return true;
 
       case 'FORCE_SEND':
+        console.log("service worker force send");
         sendToAgent().then(() => respond({ ok: true }));
         return true;
 

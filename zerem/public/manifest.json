@@ -6,7 +6,7 @@
   "permissions": ["tabs", "activeTab", "storage", "alarms", "notifications"],
   "host_permissions": ["<all_urls>"],
   "content_security_policy": {
-    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https: wss:; img-src 'self' data: https: blob:; frame-src 'self' https:;"
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https: wss: http://localhost:3000 http://127.0.0.1:3000; img-src 'self' data: https: blob:; frame-src 'self' https:;"
   },
   "background": {
     "service_worker": "background/service-worker.js",
