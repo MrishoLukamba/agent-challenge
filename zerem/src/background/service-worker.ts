@@ -156,7 +156,7 @@ async function sendToAgent() {
   const config = await chrome.storage.sync.get(['agentUrl', 'agentId']);
   const agentUrl = ((config.agentUrl as string) || DEFAULT_AGENT_URL).replace(/\/$/, '');
   const agentId = (config.agentId as string) || DEFAULT_AGENT_ID;
-  const generateUrl = `${agentUrl}/zerem-plugin/zerem/generate?${new URLSearchParams({ agentId })}`;
+  const generateUrl = `${agentUrl}/zerem-plugin/api/zerem/generate?${new URLSearchParams({ agentId })}`;
 
   try {
     const res = await fetch(generateUrl, {
@@ -203,7 +203,7 @@ async function publishTweet(payload: {
   const config = await chrome.storage.sync.get(['agentUrl', 'agentId']);
   const agentUrl = ((config.agentUrl as string) || DEFAULT_AGENT_URL).replace(/\/$/, '');
   const agentId = (config.agentId as string) || DEFAULT_AGENT_ID;
-  const publishUrl = `${agentUrl}/zerem-plugin/zerem/publish?${new URLSearchParams({ agentId })}`;
+  const publishUrl = `${agentUrl}/zerem-plugin/api/zerem/publish?${new URLSearchParams({ agentId })}`;
 
   try {
     const res = await fetch(publishUrl, {

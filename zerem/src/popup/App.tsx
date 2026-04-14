@@ -849,6 +849,26 @@ export default function App() {
                   </button>
                 </div>
               </div>
+              {isForceSending ? (
+                <div
+                  style={{
+                    marginTop: 10,
+                    padding: '10px 12px',
+                    border: '1px solid var(--border)',
+                    borderRadius: 10,
+                    background: 'var(--bg-surface)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                  }}
+                  aria-live="polite"
+                >
+                  <div className="spinner" />
+                  <p className="loading-text" style={{ margin: 0 }}>
+                    Sending now... please wait approx 1 min.
+                  </p>
+                </div>
+              ) : null}
             </div>
             <div className="home-social-anchor" ref={socialAnchorRef}>
               <button
